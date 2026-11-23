@@ -597,8 +597,14 @@ function renderDaySelect(selected) {
   const sel = $('pDay');
   sel.textContent = '';
   const days = Math.max(1, Number(state.trip.days) || 1);
-  for (let d = 1; d <= days; d++) sel.appendChild(el('option', null, '第 ' + d + ' 天'));
-  sel.appendChild(el('option', null, '还没定'));
+  for (let d = 1; d <= days; d++) {
+    const opt = el('option', null, '第 ' + d + ' 天');
+    opt.value = String(d);
+    sel.appendChild(opt);
+  }
+  const unsetOpt = el('option', null, '还没定');
+  unsetOpt.value = '0';
+  sel.appendChild(unsetOpt);
   sel.value = String(selected === 0 ? 0 : Math.min(selected, days));
 }
 
