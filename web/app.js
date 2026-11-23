@@ -127,7 +127,10 @@ async function apiInsert(table, row) {
     headers: supabaseHeaders,
     body: JSON.stringify(row)
   });
-  if (!res.ok) throw new Error('请求失败');
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('请求失败：' + errText);
+  }
   return await res.json();
 }
 
@@ -137,7 +140,10 @@ async function apiUpdate(table, filter, patch) {
     headers: supabaseHeaders,
     body: JSON.stringify(patch)
   });
-  if (!res.ok) throw new Error('请求失败');
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('请求失败：' + errText);
+  }
   return await res.json();
 }
 
@@ -146,7 +152,10 @@ async function apiDelete(table, filter) {
     method: 'DELETE',
     headers: supabaseHeaders
   });
-  if (!res.ok) throw new Error('请求失败');
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('请求失败：' + errText);
+  }
   return await res.json();
 }
 
