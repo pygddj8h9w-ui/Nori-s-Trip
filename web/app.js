@@ -597,6 +597,9 @@ function renderDaySelect(selected) {
   const sel = $('pDay');
   sel.textContent = '';
   const days = Math.max(1, Number(state.trip.days) || 1);
+  const allOpt = el('option', null, '全部');
+  allOpt.value = '-1';
+  sel.appendChild(allOpt);
   for (let d = 1; d <= days; d++) {
     const opt = el('option', null, '第 ' + d + ' 天');
     opt.value = String(d);
@@ -605,7 +608,7 @@ function renderDaySelect(selected) {
   const unsetOpt = el('option', null, '还没定');
   unsetOpt.value = '0';
   sel.appendChild(unsetOpt);
-  sel.value = String(selected === 0 ? 0 : Math.min(selected, days));
+  sel.value = String(selected === 0 ? 0 : selected === -1 ? -1 : Math.min(selected, days));
 }
 
 function openPoint(pointId, seed = {}) {
@@ -1025,6 +1028,19 @@ function wire() {
       closeSheets();
       await load();
     } catch (err) { toast(err.message, true); }
+  };
+
+  $('tDelete').onclick = () => {
+    const button = $('tDelete');
+    if (button.dataset.armed) {
+      apiDelete('trips', `code=eq.${state.trip.code}`)
+        .then(() => { signOut(); toast('行程删掉了'); })
+        .catch(err => toast(err.message, true));
+      return;
+    }
+    button.dataset.armed = '1';
+    button.textContent = '再点一次确认删除';
+    setTimeout(() => { delete button.dataset.armed; button.textContent = '删除行程'; }, 4000);
   };
 
   for (const id of ['sheetClose', 'tripSheetClose', 'meSheetClose', 'shareSheetClose']) $(id).onclick = closeSheets;
