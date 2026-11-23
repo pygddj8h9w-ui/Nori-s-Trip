@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>行程地图 · 一起标记想去的地方</title>
+<meta name="description" content="以地图为基础的旅行规划页面：在地图上标记地点、写备注，同伴可以针对地点或整趟行程留言讨论。">
+<link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="gate-head">
+      <span class="logo" aria-hidden="true"></span>
+      <h1>行程地图</h1>
+      <p>在地图上标出想去的点，写下备注，小姐妹随时补评论。</p>
+    </div>
+
+    <label class="field">
+      <span class="field-label">你的名字</span>
+      <input id="gateNick" maxlength="16" placeholder="姐妹们怎么称呼你" autocomplete="off">
+    </label>
+
+    <div class="gate-cols">
+      <div class="gate-col">
+        <h2>新建一趟行程</h2>
+        <label class="field">
+          <span class="field-label">行程名称</span>
+          <input id="gateTripName" maxlength="40" placeholder="大理 · 洱海 3 天" autocomplete="off">
+        </label>
+        <label class="field">
+          <span class="field-label">天数</span>
+          <input id="gateTripDays" type="number" min="1" max="30" value="3">
+        </label>
+        <button class="btn primary wide" id="createTripBtn" type="button">创建并开始标记</button>
+      </div>
+
+      <div class="gate-col">
+        <h2>加入别人的行程</h2>
+        <label class="field">
+          <span class="field-label">邀请码</span>
+          <input id="gateJoinCode" maxlength="12" placeholder="例如 K7QF2M3D" autocomplete="off" class="code-input">
+        </label>
+        <button class="btn ghost wide" id="joinTripBtn" type="button">加入</button>
+        <p class="hint">或者直接点姐妹发给你的链接，链接里已经带着邀请码。</p>
+        <div id="recentTrips"></div>
+      </div>
+    </div>
+    <p class="gate-error" id="gateError" hidden></p>
+  </div>
+</div>
+
+<div class="app" id="app" hidden>
+  <header class="topbar">
+    <div class="trip-id">
+      <span class="logo small" aria-hidden="true"></span>
+      <div class="trip-meta">
+        <button class="trip-name" id="tripNameBtn" type="button" title="点击修改行程名称和天数"></button>
+        <span class="trip-code" id="tripCodeText"></span>
+      </div>
+    </div>
+
+    <div class="search" id="searchBox">
+      <input id="searchInput" type="search" placeholder="搜地点：西湖 / 咖啡馆 / 酒店" autocomplete="off" aria-label="搜索地点">
+      <ul class="search-pop" id="searchResults" hidden></ul>
+    </div>
+
+    <div class="top-actions">
+      <span class="sync" id="syncState" title="同伴的改动会自动同步过来">已同步</span>
+      <button class="btn ghost" id="shareBtn" type="button">分享</button>
+      <button class="btn me" id="meBtn" type="button" title="点击修改你的名字"></button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <nav class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="points" type="button">地点<span class="count" id="countPoints">0</span></button>
+        <button role="tab" aria-selected="false" data-tab="chat" type="button">讨论<span class="count" id="countChat">0</span></button>
+      </nav>
+
+      <div class="daybar" id="daybar"></div>
+
+      <section class="tab-body" id="tabPoints">
+        <ul class="plist" id="pointList"></ul>
+        <div class="empty" id="pointsEmpty" hidden>
+          <p>还没有标记任何地点。</p>
+          <p class="empty-sub">在地图上点一下，或者搜一个地名，就能加上。</p>
+        </div>
+      </section>
+
+      <section class="tab-body chat-body" id="tabChat" hidden>
+        <div id="chatList"></div>
+      </section>
+    </aside>
+
+    <div class="map-wrap">
+      <div id="map"></div>
+      <div class="map-tip" id="mapTip">在空白处点一下，即可加为地点</div>
+      <div class="map-tools">
+        <button class="tool" id="fitBtn" type="button" title="缩放到全部地点">全部</button>
+        <button class="tool" id="locBtn" type="button" title="定位到我的位置">定位</button>
+      </div>
+      <div class="map-offline" id="mapOffline" hidden>地图瓦片加载失败，请检查网络后刷新。</div>
+    </div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<section class="sheet" id="pointSheet" hidden role="dialog" aria-modal="true" aria-label="地点详情">
+  <header class="sheet-head">
+    <input class="sheet-title" id="pTitle" placeholder="地点名称" maxlength="60" autocomplete="off">
+    <button class="icon-btn" id="sheetClose" type="button" aria-label="关闭">✕</button>
+  </header>
+
+  <div class="sheet-body">
+    <div class="chips" id="pCategory"></div>
+
+    <div class="row2">
+      <label class="field slim">
+        <span class="field-label">第几天</span>
+        <select id="pDay"></select>
+      </label>
+      <label class="field slim">
+        <span class="field-label">花费（可选）</span>
+        <input id="pCost" placeholder="例如 120" autocomplete="off">
+      </label>
+    </div>
+
+    <label class="field slim">
+      <span class="field-label">备注</span>
+      <textarea id="pNote" rows="4" maxlength="800" placeholder="想去的原因、几点去、要订什么、避雷提醒…"></textarea>
+    </label>
+
+    <p class="addr" id="pAddress"></p>
+    <div class="sheet-actions">
+      <button class="btn primary" id="pSave" type="button">保存</button>
+      <button class="btn text danger" id="pDelete" type="button">删除地点</button>
+      <span class="saved-flag" id="pSavedFlag" hidden>已保存</span>
+    </div>
+  </div>
+</section>
+
+<section class="sheet tiny" id="tripSheet" hidden role="dialog" aria-modal="true" aria-label="行程设置">
+  <header class="sheet-head"><h3>行程设置</h3><button class="icon-btn" id="tripSheetClose" type="button" aria-label="关闭">✕</button></header>
+  <div class="sheet-body">
+    <label class="field slim"><span class="field-label">行程名称</span><input id="tName" maxlength="40" autocomplete="off"></label>
+    <label class="field slim"><span class="field-label">天数</span><input id="tDays" type="number" min="1" max="30"></label>
+    <div class="sheet-actions"><button class="btn primary" id="tSave" type="button">保存</button></div>
+  </div>
+</section>
+
+<section class="sheet tiny" id="meSheet" hidden role="dialog" aria-modal="true" aria-label="你的名字">
+  <header class="sheet-head"><h3>你的名字</h3><button class="icon-btn" id="meSheetClose" type="button" aria-label="关闭">✕</button></header>
+  <div class="sheet-body">
+    <label class="field slim"><span class="field-label">姐妹们怎么称呼你</span><input id="mNick" maxlength="16" autocomplete="off"></label>
+    <p class="hint">这个名字只用来标记评论是谁写的，不需要注册。</p>
+    <div class="sheet-actions"><button class="btn primary" id="mSave" type="button">保存</button></div>
+  </div>
+</section>
+
+<section class="sheet tiny" id="shareSheet" hidden role="dialog" aria-modal="true" aria-label="分享行程">
+  <header class="sheet-head"><h3>分享给姐妹</h3><button class="icon-btn" id="shareSheetClose" type="button" aria-label="关闭">✕</button></header>
+  <div class="sheet-body">
+    <p class="hint">把链接发到群里，点开就能一起标记和评论，不用装任何东西。</p>
+    <input class="link-box" id="shareLink" readonly onclick="this.select()">
+    <div class="sheet-actions"><button class="btn primary" id="copyLinkBtn" type="button">复制链接</button></div>
+    <p class="hint">邀请码：<strong id="shareCode"></strong></p>
+  </div>
+</section>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="./app.js?v=8"></script>
+</body>
+</html>
