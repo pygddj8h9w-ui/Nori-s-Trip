@@ -229,8 +229,8 @@ function renderMarkers() {
   for (const [id, marker] of markers) {
     if (!ids.has(id)) { marker.remove(); markers.delete(id); }
   }
-  // 隐藏全部备注时只留图钉；在 daybar 里选了某一天，再把那一天摊开。
-  const openAll = !state.notesHidden || state.notesReveal === state.day;
+  // 隐藏备注时气泡照常显示名称和花费，只是不写备注；在 daybar 里选了某一天，再把那一天补上。
+  const withNote = !state.notesHidden || state.notesReveal === state.day;
   for (const point of visible) {
     const old = markers.get(point.id);
     if (old) { old.remove(); markers.delete(point.id); }
@@ -238,7 +238,7 @@ function renderMarkers() {
     const info = el2('div', 'marker-popup');
     info.appendChild(el2('b', 'mp-name', point.title || '未命名'));
     if (point.cost) info.appendChild(el2('span', 'mp-cost', '¥' + point.cost));
-    if (point.note) info.appendChild(el2('span', 'mp-note', point.note));
+    if (point.note && withNote) info.appendChild(el2('span', 'mp-note', point.note));
     const popup = new maplibregl.Popup({ offset: 36, closeButton: true, maxWidth: '220px' })
       .setLngLat([point.lng, point.lat])
       .setDOMContent(info);
@@ -251,7 +251,7 @@ function renderMarkers() {
       .setLngLat([point.lng, point.lat])
       .setPopup(popup)
       .addTo(map);
-    if (openAll) marker.togglePopup();
+    marker.togglePopup();
     marker.on('dragend', async () => {
       const pos = marker.getLngLat();
       try {
@@ -378,7 +378,7 @@ function paintNotesBtn() {
   button.setAttribute('aria-pressed', String(state.notesHidden));
   button.title = state.notesHidden
     ? '备注已隐藏，点左侧任意一天会在那一天重新显示'
-    : '点击后地图上只留图钉，不看备注';
+    : '点击后气泡只显示名称和花费，不看备注';
 }
 
 function toggleNotes() {
@@ -387,7 +387,7 @@ function toggleNotes() {
   store.set(LS.notes, state.notesHidden);
   paintNotesBtn();
   renderMarkers();
-  toast(state.notesHidden ? '备注先收起来了' : '备注全部显示出来啦');
+  toast(state.notesHidden ? '备注收起来了，气泡只留名称' : '备注全部显示出来啦');
 }
 
 function renderCounts() {
