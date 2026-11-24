@@ -11,7 +11,9 @@ const CATS = [
   { id: 'other', label: '其他', color: '#7b8a85' }
 ];
 
-const LS = { nick: 'tripmap.nick', trip: 'tripmap.trip', recent: 'tripmap.recent' };
+const LS = { nick: 'tripmap.nick', trip: 'tripmap.trip', recent: 'tripmap.recent', notes: 'tripmap.notesHidden' };
+// state.day 0 是「全程」，所以「待定」需要一个不和 p.day === 0 冲突的标记值。
+const PENDING = 'pending';
 const CODE_RE = /^[A-Z0-9]{6,12}$/;
 const SYNC_MS = 6000;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -40,7 +42,9 @@ const state = {
   draft: null,
   dirty: false,
   signature: '',
-  justAddedId: null
+  justAddedId: null,
+  notesHidden: store.get(LS.notes, false),
+  notesReveal: null
 };
 
 const $ = id => document.getElementById(id);
@@ -172,7 +176,8 @@ function initMap() {
     zoom: 13
   });
 
-  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  // 右上角留给 .map-tools，缩放按钮换到左上角，两组控件会互相盖住。
+  map.addControl(new maplibregl.NavigationControl(), 'top-left');
 
   map.on('click', e => {
     if (!state.trip) return;
@@ -211,7 +216,10 @@ function commentsOf(pointId) {
 }
 
 function visiblePoints() {
-  const list = state.day === 0 ? state.points : state.points.filter(p => p.day === state.day);
+  const day = state.day;
+  const list = day === 0 ? state.points
+    : day === PENDING ? state.points.filter(p => p.day === 0)
+    : state.points.filter(p => p.day === day);
   return list.slice().sort((a, b) => (a.day - b.day) || (a.created_at < b.created_at ? -1 : 1));
 }
 
@@ -221,66 +229,40 @@ function renderMarkers() {
   for (const [id, marker] of markers) {
     if (!ids.has(id)) { marker.remove(); markers.delete(id); }
   }
+  // 隐藏全部备注时只留图钉；在 daybar 里选了某一天，再把那一天摊开。
+  const openAll = !state.notesHidden || state.notesReveal === state.day;
   for (const point of visible) {
-    let marker = markers.get(point.id);
-    if (!marker) {
-      const el = createMarkerEl(point, commentsOf(point.id).length);
-      const info = el2('div', 'marker-popup');
-      info.appendChild(el2('b', 'mp-name', point.title || '未命名'));
-      if (point.cost) info.appendChild(el2('span', 'mp-cost', '¥' + point.cost));
-      if (point.note) info.appendChild(el2('span', 'mp-note', point.note));
-      const popup = new maplibregl.Popup({ offset: 36, closeButton: true, maxWidth: '220px' })
-        .setLngLat([point.lng, point.lat])
-        .setDOMContent(info);
-      el.addEventListener('click', ev => {
-        ev.stopPropagation();
-        selectPoint(point.id);
-        popup.addTo(map);
-      });
-      marker = new maplibregl.Marker({ element: el, draggable: true, anchor: 'bottom' })
-        .setLngLat([point.lng, point.lat])
-        .setPopup(popup)
-        .addTo(map);
-      marker.togglePopup();
-      marker.on('dragend', async () => {
-        const pos = marker.getLngLat();
-        try {
-          await patchPoint(point.id, { lat: pos.lat, lng: pos.lng });
-          await load();
-        } catch (err) {
-          toast(err.message, true);
-          await load();
-        }
-      });
-      markers.set(point.id, marker);
-    } else {
-      marker.remove();
-      markers.delete(point.id);
-      const el = createMarkerEl(point, commentsOf(point.id).length);
-      const info = el2('div', 'marker-popup');
-      info.appendChild(el2('b', 'mp-name', point.title || '未命名'));
-      if (point.cost) info.appendChild(el2('span', 'mp-cost', '¥' + point.cost));
-      if (point.note) info.appendChild(el2('span', 'mp-note', point.note));
-      const popup = new maplibregl.Popup({ offset: 36, closeButton: true, maxWidth: '220px' })
-        .setLngLat([point.lng, point.lat])
-        .setDOMContent(info);
-      el.addEventListener('click', ev => {
-        ev.stopPropagation();
-        selectPoint(point.id);
-        popup.addTo(map);
-      });
-      const newMarker = new maplibregl.Marker({ element: el, draggable: true, anchor: 'bottom' })
-        .setLngLat([point.lng, point.lat])
-        .setPopup(popup)
-        .addTo(map);
-      newMarker.togglePopup();
-      newMarker.on('dragend', async () => {
-        const pos = newMarker.getLngLat();
-        try { await patchPoint(point.id, { lat: pos.lat, lng: pos.lng }); await load(); }
-        catch (err) { toast(err.message, true); await load(); }
-      });
-      markers.set(point.id, newMarker);
-    }
+    const old = markers.get(point.id);
+    if (old) { old.remove(); markers.delete(point.id); }
+    const el = createMarkerEl(point, commentsOf(point.id).length);
+    const info = el2('div', 'marker-popup');
+    info.appendChild(el2('b', 'mp-name', point.title || '未命名'));
+    if (point.cost) info.appendChild(el2('span', 'mp-cost', '¥' + point.cost));
+    if (point.note) info.appendChild(el2('span', 'mp-note', point.note));
+    const popup = new maplibregl.Popup({ offset: 36, closeButton: true, maxWidth: '220px' })
+      .setLngLat([point.lng, point.lat])
+      .setDOMContent(info);
+    el.addEventListener('click', ev => {
+      ev.stopPropagation();
+      selectPoint(point.id);
+      popup.addTo(map);
+    });
+    const marker = new maplibregl.Marker({ element: el, draggable: true, anchor: 'bottom' })
+      .setLngLat([point.lng, point.lat])
+      .setPopup(popup)
+      .addTo(map);
+    if (openAll) marker.togglePopup();
+    marker.on('dragend', async () => {
+      const pos = marker.getLngLat();
+      try {
+        await patchPoint(point.id, { lat: pos.lat, lng: pos.lng });
+        await load();
+      } catch (err) {
+        toast(err.message, true);
+        await load();
+      }
+    });
+    markers.set(point.id, marker);
   }
 }
 
@@ -358,6 +340,7 @@ window.addEventListener('focus', () => { if (state.trip && !state.dirty) load();
 
 function renderAll() {
   renderDaybar();
+  paintNotesBtn();
   renderPointList();
   renderMarkers();
   renderChat();
@@ -369,13 +352,42 @@ function renderDaybar() {
   const bar = $('daybar');
   bar.textContent = '';
   const days = Math.max(1, Number(state.trip && state.trip.days) || 1);
-  for (const d of [0, ...Array.from({ length: days }, (_, i) => i + 1)]) {
-    const b = el('button', null, d === 0 ? '全程' : '第 ' + d + ' 天');
+  const options = [
+    { value: 0, label: '全程' },
+    ...Array.from({ length: days }, (_, i) => ({ value: i + 1, label: '第 ' + (i + 1) + ' 天' })),
+    { value: PENDING, label: '待定' }
+  ];
+  for (const opt of options) {
+    const b = el('button', null, opt.label);
     b.type = 'button';
-    b.setAttribute('aria-pressed', String(state.day === d));
-    b.onclick = () => { state.day = d; renderDaybar(); renderPointList(); renderMarkers(); };
+    b.setAttribute('aria-pressed', String(state.day === opt.value));
+    b.onclick = () => {
+      state.day = opt.value;
+      if (state.notesHidden) state.notesReveal = opt.value;
+      renderDaybar();
+      renderPointList();
+      renderMarkers();
+    };
     bar.appendChild(b);
   }
+}
+
+function paintNotesBtn() {
+  const button = $('notesBtn');
+  button.textContent = state.notesHidden ? '显示所有备注' : '隐藏所有备注';
+  button.setAttribute('aria-pressed', String(state.notesHidden));
+  button.title = state.notesHidden
+    ? '备注已隐藏，点左侧任意一天会在那一天重新显示'
+    : '点击后地图上只留图钉，不看备注';
+}
+
+function toggleNotes() {
+  state.notesHidden = !state.notesHidden;
+  state.notesReveal = null;
+  store.set(LS.notes, state.notesHidden);
+  paintNotesBtn();
+  renderMarkers();
+  toast(state.notesHidden ? '备注先收起来了' : '备注全部显示出来啦');
 }
 
 function renderCounts() {
@@ -624,7 +636,7 @@ function openPoint(pointId, seed = {}) {
         lat: seed.lat,
         lng: seed.lng,
         category: seed.category || 'sight',
-        day: state.day > 0 ? state.day : 1,
+        day: state.day === PENDING ? 0 : state.day > 0 ? state.day : 1,
         note: '',
         cost: ''
       };
@@ -861,6 +873,7 @@ async function enterTrip(code) {
   state.trip = { code, name: '加载中…', days: 1 };
   state.signature = '';
   state.day = 0;
+  state.notesReveal = null;
   paintHeader();
   await load();
   if (!state.trip) throw new Error('邀请码打不开这趟行程');
@@ -1069,6 +1082,7 @@ function wire() {
   }
 
   $('fitBtn').onclick = () => fitAll(true);
+  $('notesBtn').onclick = toggleNotes;
   $('locBtn').onclick = () => {
     if (!navigator.geolocation) { toast('这个浏览器不给定位', true); return; }
     navigator.geolocation.getCurrentPosition(

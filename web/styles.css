@@ -478,6 +478,11 @@ textarea { resize: vertical; min-height: calc(52px * var(--site-space, 1)); }
   box-shadow: 0 calc(2px * var(--site-space, 1)) calc(8px * var(--site-space, 1)) rgba(0, 0, 0, .08);
 }
 .tool:hover { background: var(--site-bg); }
+.tool[aria-pressed="true"] {
+  background: var(--site-accent);
+  border-color: var(--site-accent);
+  color: var(--site-on-accent, #fff);
+}
 
 .map-offline {
   position: absolute;
